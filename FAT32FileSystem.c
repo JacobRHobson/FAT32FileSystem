@@ -1,26 +1,28 @@
 /*
-COP4610 Project 3 Readme
-Group 28
-Cameron Heffelfinger
-Jacob Hobson
-Vanessa Myron
+	Jacob Hobosn
+	Vannessa Myron
+	Cameron Heffelfinger
+	
+	4/30/20
+	Fat32 File System Navigation program
 
-Division of Labor:
-Implimentation for Instruction intake: Jacob
-exit: Jacob
-info: Jacob
-size: Jacob
-ls: Vanessa
-cd: Vanessa
-create:Jacob  
-mkdir: Jacob
-mv: Jacob
-open: Vanessa
-close: Vanessa
-read: Not Implemented
-write: Not Implemented
-rm: Cameron
-cp: Cameron
+	Division of Labor:
+	Implimentation for Instruction intake: Jacob
+	exit: Jacob
+	info: Jacob
+	size: Jacob
+	ls: Vanessa
+	cd: Vanessa
+	create:Jacob  
+	mkdir: Jacob
+	mv: Jacob
+	open: Vanessa
+	close: Vanessa
+	read: Not Implemented
+	write: Not Implemented
+	rm: Cameron/Jacob
+	cp: Cameron/Jacob
+
 */
 
 #include <stdio.h>
@@ -29,7 +31,7 @@ cp: Cameron
 #include <unistd.h>
 #include <fcntl.h>
 #include <string.h>
-
+#include <stdbool.h>
 
 
 typedef struct
@@ -50,7 +52,7 @@ typedef struct{
 	unsigned short DIR_WrtTime;
 	unsigned short DIR_WrtDate;
 	unsigned short DIR_FstClusLO;
-	unsigned long DIR_FileSize;
+	unsigned int DIR_FileSize;
 	
 } __attribute__((packed)) DirEntry;
 
@@ -107,9 +109,10 @@ void deleteAppend();
 void fileOpen(int image, char *fileName, char *mode);
 void addFile(int image, char *fileName, char *fileMode);
 void closeFile(char *fileName);
-void rm(int image, unsigned int clusNum, char* arg1);
+void mv(char* arg1, char* arg2, int image);
 void createEmptyDirEntry(int image, unsigned int offSet);
-void cp(int image, char* fileName, char* to);
+void rm(int image, unsigned int clusNum, char* fileName);
+
 int main() {
 	
 	
@@ -253,6 +256,14 @@ int main() {
 		if(strcmp(instr.tokens[0], "mkdir") == 0){
 			mkdir(instr.tokens[1], f);
 		}
+		
+		if(strcmp(instr.tokens[0], "mv") == 0){
+			if(instr.tokens[2] == NULL)
+				printf("Invalid command: second argument required\n");
+			else
+				mv(instr.tokens[1], instr.tokens[2], f);
+		}
+		
 		if(strcmp(instr.tokens[0], "ls") == 0)
  		{
  		if(instr.tokens[1] != NULL && strcmp(instr.tokens[1], ".") !=0)
@@ -282,8 +293,24 @@ int main() {
 
 
  		}
-    	
 
+ 		if(strcmp(instr.tokens[0], "rm") == 0){
+ 			rm(f, environment.curr_clust_num, instr.tokens[1]);
+    	}
+
+    	/*
+		if(strcmp(instr.tokens[0], "cp") == 0){
+ 			if(instr.tokens[1] == NULL){	//No Filename provide, print error
+ 				printf("Error, no filename provided");
+ 			}
+ 			else if(instr.tokens[2] == NULL){	//Case of no TO arg
+ 				cp(f, instr.tokens[1],  "TO");
+ 			}
+ 			else{							//Case of TO arg
+ 				cp(f, instr.tokens[1], instr.tokens[2]);
+ 			}
+ 		}
+		*/
 		if(strcmp(instr.tokens[0], "cd") == 0){
 			if(instr.tokens[1] == NULL){
 			printf("Error: No argument\n");
@@ -308,7 +335,9 @@ int main() {
 			 }
 
 	        }
+		
 		}
+		
 		if(strcmp(instr.tokens[0], "open") == 0){
 		if(instr.tokens[1] == NULL)
 		{
@@ -334,20 +363,7 @@ int main() {
 			closeFile(instr.tokens[1]);
 			}
 		}
-		if(strcmp(instr.tokens[0], "rm") == 0){
- 			rm(f, environment.curr_clust_num, instr.tokens[1]);
- 		}
- 		if(strcmp(instr.tokens[0], "cp") == 0){
- 			if(instr.tokens[1] == NULL){	//No Filename provide, print error
- 				printf("Error, no filename provided");
- 			}
- 			else if(instr.tokens[2] == NULL){	//Case of no TO arg
- 				cp(f, instr.tokens[1],  "TO");
- 			}
- 			else{							//Case of TO arg
- 				cp(f, instr.tokens[1], instr.tokens[2]);
- 			}
- 		}
+
 		clearInstruction(&instr);
 	}
 	
@@ -430,7 +446,7 @@ int size(char* arg, int image){
 	int i;
 	for(i = strlen(arg); i < 11; i++){
 		strcat(arg, space);
-    }
+	}
 	
 	
 	while(x < 0x0FFFFFF8){
@@ -443,11 +459,7 @@ int size(char* arg, int image){
 
 			pread(image, &tempDir, sizeof(DirEntry), byteOffSet);	//intake entire dir entry
 			if(tempDir.DIR_Attributes != 15){
-				int j;
-				for(j = 0; j < 11; j++){
-					printf("%c", tempDir.DIR_name[j]);
-				}
-				printf("\n");
+				
 				
 				//Print size if name matches of directory matches arg
 				if(strncmp(tempDir.DIR_name, arg, 11) == 0)
@@ -492,9 +504,16 @@ void create(char* arg, int image){
 	
 	unsigned int byteOffSet;
 	byteOffSet = BPB_BytsPerSec * (FirstDataSector + ( tempClus - 2) * BPB_SecPerClus);
-	temp.DIR_FstClusLO = 0xFFFF & byteOffSet;
-	temp.DIR_FstClusHI = (byteOffSet >> 16) & 0xFFFF;
+	temp.DIR_FstClusLO = 0xFFFF & tempClus;
+	temp.DIR_FstClusHI = (tempClus >> 16) & 0xFFFF;
 	temp.DIR_FileSize = 0;
+	temp.DIR_NTRes = 0;
+	temp.DIR_CrtTimeTenth = 0;
+	temp.DIR_CrtTime = 0;
+	temp.DIR_CrtDate = 0;
+	temp.DIR_LstAccDate = 0;
+	temp.DIR_WrtTime = 0;
+	temp.DIR_WrtDate = 0;
 	
 	//Putting the actual directory entry into the directory (What if the directory is full?)
 	
@@ -545,10 +564,18 @@ void mkdir(char* arg, int image){
 	unsigned int byteOffSet;
 	byteOffSet = BPB_BytsPerSec * (FirstDataSector + ( tempClus - 2) * BPB_SecPerClus);
 	
-	temp.DIR_FstClusLO = 0xFFFF & byteOffSet;
-	temp.DIR_FstClusHI = (byteOffSet >> 16) & 0xFFFF;
+	temp.DIR_FstClusLO = 0xFFFF & tempClus;
+	temp.DIR_FstClusHI = (tempClus >> 16) & 0xFFFF;
 	temp.DIR_Attributes = 0x10;
 	temp.DIR_FileSize = 0;
+	temp.DIR_NTRes = 0;
+	temp.DIR_CrtTimeTenth = 0;
+	temp.DIR_CrtTime = 0;
+	temp.DIR_CrtDate = 0;
+	temp.DIR_LstAccDate = 0;
+	temp.DIR_WrtTime = 0;
+	temp.DIR_WrtDate = 0;
+	
 	byteOffSet = BPB_BytsPerSec * (FirstDataSector + ( environment.curr_clust_num - 2) * BPB_SecPerClus);
 		
 	DirEntry itr;
@@ -570,8 +597,8 @@ void mkdir(char* arg, int image){
 	DirEntry parent;
 	
 	strncpy(parent.DIR_name, "..         ", 11);
-	parent.DIR_FstClusLO = 0xFFFF & byteOffSet;
-	parent.DIR_FstClusHI = (byteOffSet >> 16) & 0xFFFF;
+	parent.DIR_FstClusLO = 0xFFFF & environment.curr_clust_num;
+	parent.DIR_FstClusHI = (environment.curr_clust_num >> 16) & 0xFFFF;
 	parent.DIR_Attributes = 0x10;
 	parent.DIR_FileSize = 0;
 	byteOffSet = BPB_BytsPerSec * (FirstDataSector + ( tempClus - 2) * BPB_SecPerClus);
@@ -587,21 +614,22 @@ void ls(int image, unsigned int clusNum){
 	byteOffSet = firstSectorOfCluster(clusNum);
 	//BPB_BytsPerSec * (FirstDataSector + ( clusNum - 2) * BPB_SecPerClus);
 	DirEntry tempDir;
-	
-	do{
-
-		pread(image, &tempDir, sizeof(DirEntry), byteOffSet);	//intake entire dir entry
-		if(tempDir.DIR_Attributes != 15){
-			int j;
-			for(j = 0; j < 11; j++){
-				if(tempDir.DIR_name[j] != ' ')
-					printf("%c", tempDir.DIR_name[j]);
+	int i;
+	for(i = 0; i < 16; i++){
+		
+		
+			pread(image, &tempDir, sizeof(DirEntry), byteOffSet);	//intake entire dir entry
+			if(tempDir.DIR_Attributes != 15 && tempDir.DIR_name[0] != 0 && tempDir.DIR_name[0] != 46){
+				int j;
+				for(j = 0; j < 11; j++){
+					if(tempDir.DIR_name[j] != ' ')
+						printf("%c", tempDir.DIR_name[j]);
+				}
+				printf(" ");
+				
 			}
-			printf(" ");
-			
-		}
-		byteOffSet += 32;
-	}while(tempDir.DIR_name[0] != 0);
+			byteOffSet += 32;
+	}
 	printf("\n");
 }
 
@@ -657,7 +685,8 @@ int cd(char *name, int image, unsigned int dirClustNum)
 	return -1;
 	}
 return dirClustNum;	
-} 
+}
+
 int nextEmptyClus(int image){
 	
 	unsigned int tempClus = BPB_RootClus;
@@ -681,32 +710,29 @@ void pathAppend(int curr_clusterNum,char * pathName)
  	environment.curr_clust_num = curr_clusterNum;
 		for(j = 0;j < 11; j++)
 		{
-                 if(pathName[j] != ' '){
-		 tempName[j] = pathName[j];  
-		
-		}
+            if(pathName[j] != ' '){
+				tempName[j] = pathName[j];  
+			}
 
 		} 
  	strcpy((char *)environment.name, tempName);
  	strcpy(environment.curr_path[environment.curr], tempName); // add the name to the current path name
-  //	environment.curr_clust_num = curr_clusterNum;  //set the current cluster number to the currclustnum in envir.
-         environment.curr_clust_path[environment.curr] = curr_clusterNum;
-         environment.curr++; // update
+  
+	environment.curr_clust_path[environment.curr] = curr_clusterNum;
+	environment.curr++; // update
 
  }
 
 
-void deleteAppend()
- {
- if(environment.curr > 1)
- {
- environment.curr_clust_num = environment.curr_clust_path[environment.curr-2];
- strcpy((char*)environment.name, environment.curr_path[environment.curr -2]);
- environment.curr--;
+void deleteAppend(){
+	if(environment.curr > 1){
+	environment.curr_clust_num = environment.curr_clust_path[environment.curr-2];
+	strcpy((char*)environment.name, environment.curr_path[environment.curr -2]);
+	environment.curr--;
 
- }
+	 }
 
- }
+}
 
 
 void fileOpen(int image, char *fileName, char *mode)
@@ -722,47 +748,46 @@ void fileOpen(int image, char *fileName, char *mode)
         }
 
 	if(strcmp(mode, "w") != 0 && strcmp(mode, "r") != 0 && strcmp(mode, "wr") != 0 && strcmp(mode, "rw") != 0){
-	printf("Incorrect mode. Please use one of these options: w, r, rw, wr \n");
-	} 
+		printf("Incorrect mode. Please use one of these options: w, r, rw, wr \n");
+	}
+	
 	else if(OpenFile(fileName) == 1)
 	{
-	printf("File is already opened.\n");
-
+		printf("File is already opened.\n");
 	}
-        else{	
+	
+    else{	
         while(x < 0x0FFFFFF8){
 
-                byteOffSet = BPB_BytsPerSec * (FirstDataSector + ( x - 2) * BPB_SecPerClus);
+			byteOffSet = BPB_BytsPerSec * (FirstDataSector + ( x - 2) * BPB_SecPerClus);
 
-                int i;
+			int i;
 
-                do{
+			do{
 
-                        pread(image, &tempDir, sizeof(DirEntry), byteOffSet);   //intake entire dir entry
-                        if(tempDir.DIR_Attributes != 15){
-                                //Print size if name matches of directory matches arg
-                                if(strncmp(tempDir.DIR_name, fileName, 11) == 0)
-                                        {
-						if(tempDir.DIR_Attributes & 0x10)
-						{
-						 printf("Unable to open directory\n");
+					pread(image, &tempDir, sizeof(DirEntry), byteOffSet);   //intake entire dir entry
+					if(tempDir.DIR_Attributes != 15){
+							//Print size if name matches of directory matches arg
+						if(strncmp(tempDir.DIR_name, fileName, 11) == 0){
+							
+							if(tempDir.DIR_Attributes & 0x10){
+								printf("Unable to open directory\n");
+							}
+							else{ 
+								printf("File opened in %s mode \n", mode);
+								addFile(image,fileName, mode);	
+							}		
+							return;
 						}
-						else{ 
-						printf("File opened in %s mode \n", mode);
-						addFile(image,fileName, mode);	
-						}		
-						return;
 					}
-                }
-                        byteOffSet += 32;
-                }while(tempDir.DIR_name[0] != 0);
+					byteOffSet += 32;
+			}while(tempDir.DIR_name[0] != 0);
 
 
-                pread(image, &x, 4, BPB_RsvdSecCnt * BPB_BytsPerSec + x * 4);   //Should read the value at $
-               
-
-        }
-	printf("File not found\n");
+			pread(image, &x, 4, BPB_RsvdSecCnt * BPB_BytsPerSec + x * 4);   //Should read the value at $
+		   
+		}
+		printf("File not found\n");
  	}
 }
 
@@ -771,17 +796,16 @@ int OpenFile(char *file_name)
 
 struct FileFAT *ptr;
 
-for(ptr = head; ptr !=NULL; ptr = ptr->next){
-	if(strncmp(ptr->fileName, file_name,11) == 0)
-	{				
-		return 1;
+	for(ptr = head; ptr !=NULL; ptr = ptr->next){
+		if(strncmp(ptr->fileName, file_name,11) == 0)
+		{				
+			return 1;
+		}
+
 	}
-
+	return 0;
 }
-return 0;
 
-
-}
 void addFile(int image, char *fileName, char *fileMode)
 {
 	int size = sizeof(struct FileFAT);
@@ -789,64 +813,187 @@ void addFile(int image, char *fileName, char *fileMode)
 	strcpy(ptrTemp->fileName, fileName);
 	strcpy(ptrTemp->fileMode, fileMode);
 	ptrTemp->next = NULL;
-	if(head == NULL){
-	head = ptrTemp;
-	ptrTemp->previous = head;
 	
+	if(head == NULL){
+		head = ptrTemp;
+		ptrTemp->previous = head;
 	}
 	else {
-	 struct FileFAT *ptr = head;
-	while(ptr->next != NULL){
-		ptr->previous = ptr;
-		ptr = ptr->next; // iterate 
-	}
-
+		struct FileFAT *ptr = head;
+		while(ptr->next != NULL){
+			ptr->previous = ptr;
+			ptr = ptr->next; // iterate 
+		}
 		ptr->next = ptrTemp;
 	}
+}
 
+void closeFile(char *fileName){
+	char* space = " ";
+			int i;
+			for(i = strlen(fileName); i < 11; i++){
+					strcat(fileName, space);
+			}
+
+	if(OpenFile(fileName) == 0)
+	{
+
+	printf("File is not opened.\n");
+
+	}
+	else
+	{
+		for(ptr = head; ptr !=NULL; secondPtr = ptr)
+		{
+			if(strncmp(ptr->fileName, fileName, 11)==0)
+			{
+				if(secondPtr != NULL)
+				{
+					secondPtr->next = ptr->next;
+				}
+				else
+				{
+				  head = ptr->next;
+
+
+				}
+				free(ptr);
+				ptr = ptr->next;
+				printf("File Closed\n");
+				return;
+			}
+		}
+
+	}
 
 }
 
-void closeFile(char *fileName)
-{
-char* space = " ";
-        int i;
-        for(i = strlen(fileName); i < 11; i++){
-                strcat(fileName, space);
-        }
-
-if(OpenFile(fileName) == 0)
-{
-
-printf("File is not opened.\n");
-
+void mv(char* arg1, char* arg2, int image){
+	
+	DirEntry tempDir;
+	DirEntry arg1Dir;
+	unsigned int arg1OffSet;
+	DirEntry arg2Dir;
+	unsigned int arg2OffSet;
+	unsigned int x = environment.curr_clust_num;	//First cluster we check
+	unsigned int byteOffSet;
+	bool arg2Exists;
+	
+	
+	char* space = " ";
+	int i;
+	for(i = strlen(arg1); i < 11; i++){
+		strcat(arg1, space);
+	}
+	
+	for(i = strlen(arg2); i < 11; i++){
+		strcat(arg2, space);
+	}
+	
+	while(x < 0x0FFFFFF8){
+		
+		byteOffSet = BPB_BytsPerSec * (FirstDataSector + ( x - 2) * BPB_SecPerClus);
+		
+		int i;
+		for(i = 0; i < 16; i++){
+			
+			pread(image, &tempDir, 32, byteOffSet);	//intake entire dir entry
+				
+			if(strncmp(tempDir.DIR_name, arg1, 11) == 0){
+				;
+				memcpy(&arg1Dir, &tempDir, 32);
+				arg1OffSet = byteOffSet;
+			}
+			if(strncmp(tempDir.DIR_name, arg2, 11) == 0){
+				memcpy(&arg2Dir, &tempDir, 32);//arg1Dir = tempDir;
+				arg2OffSet = byteOffSet;
+				arg2Exists = true;
+			}
+		
+			byteOffSet += 32;
+		}
+		
+		
+		pread(image, &x, 4, BPB_RsvdSecCnt * BPB_BytsPerSec + x * 4);	//Should read the value at the current cluster number and make it the new curr cluster number
+		
+	}
+	
+	int k;
+	int y;
+	
+	//Second argument doesn't exist then rename the first argument
+	if(arg2Exists == false){
+		int j;
+		for(j = 0; j < 11; j++){
+			arg1Dir.DIR_name[j] = arg2[j];
+		}
+		pwrite(image, &arg1Dir, 32, arg1OffSet);
+	}
+	
+	//Both Files
+	else if(arg1Dir.DIR_Attributes != 0x10 && arg2Dir.DIR_Attributes != 0x10){
+		printf("The name is already being used by another file\n");
+	}
+	
+	//First is a directory and second is a file
+	else if(arg1Dir.DIR_Attributes == 0x10 && arg2Dir.DIR_Attributes != 0x10){
+		printf("Cannot move directory: invalid argument destination\n");
+	}
+	
+	
+	else{
+		
+		DirEntry empDir;
+		
+				
+		createEmptyDirEntry(image, arg1OffSet);	//Create a directory full of zeros
+		
+		unsigned int arg2Address;
+		arg2Address = (arg2Dir.DIR_FstClusHI<<16)+arg2Dir.DIR_FstClusLO;	//compute address of cluster
+		arg2Address = BPB_BytsPerSec * (FirstDataSector + ( arg2Address - 2) * BPB_SecPerClus);
+		 
+		while(1){
+			
+			pread(image, &empDir, 32, arg2Address);
+			
+			if(empDir.DIR_name[0] == 0){
+				//Write new file into empty space
+				pwrite(image, &arg1Dir, 32, arg2Address);	//Put the arg1 dirEntry into the first available space in arg2Address
+				
+				return;
+			}
+			arg2Address += 32;
+		};
+	}
+	
+	
+	
 }
-else
-{
-for(ptr = head; ptr !=NULL; secondPtr = ptr)
-{
-if(strncmp(ptr->fileName, fileName, 11)==0)
-{
- if(secondPtr != NULL){
-secondPtr->next = ptr->next;
 
+void createEmptyDirEntry(int image, unsigned int offSet){
+	DirEntry temp;
+	
+	int i;
+	
+	for( i = 0; i < 11; i++){
+		temp.DIR_name[i] = 0;
+	}
+	
+	temp.DIR_Attributes = 0;
+	temp.DIR_NTRes = 0;
+	temp.DIR_CrtTimeTenth = 0;
+	temp.DIR_CrtTime = 0;
+	temp.DIR_CrtDate = 0;
+	temp.DIR_LstAccDate = 0;
+	temp.DIR_FstClusHI = 0;
+	temp.DIR_WrtTime = 0;
+	temp.DIR_WrtDate = 0;
+	temp.DIR_FstClusLO = 0;
+	temp.DIR_FileSize = 0;
+	
+	pwrite(image, &temp, 32, offSet);
 }
-else
-{
-  head = ptr->next;
 
-
-}
-free(ptr);
-ptr = ptr->next;
-printf("File Closed\n");
-return;
-}
-}
-
-}
-
-}
 
 void rm(int image, unsigned int clusNum, char* fileName){
  	char* space = " ";
@@ -867,7 +1014,7 @@ void rm(int image, unsigned int clusNum, char* fileName){
  			return;
  		}
  		if(strncmp(tempDir.DIR_name, fileName, 11) == 0){
- 			//printf("It matches!\n");
+
  			flag = 1;
  			break;
  		}
@@ -889,11 +1036,8 @@ void rm(int image, unsigned int clusNum, char* fileName){
 
  	//addr contains our first data cluster
  	unsigned int addr = (hi << 16) + lo;
- 	//DirEntry emptyDir;
- 	//emptyDir = createEmptyDirEntry(image, addr);
- 	//pwrite(image, &emptyDir, 32, byteOffset);
-
- 	//Effectively overwrites it with zeroes
+ 	
+	//Effectively overwrites it with zeroes
  	createEmptyDirEntry(image, byteOffset);
 
  	unsigned int N;
@@ -901,43 +1045,7 @@ void rm(int image, unsigned int clusNum, char* fileName){
 
  	N = ((addr - FirstDataSector)/(BPB_SecPerClus));
  	//offset is the addr
- 	//N = ((offset-FirstDataSector)/(BPB_SECPERCLUS))+2
- 	//P read 4, for the bytes
  	//Second arg unsigned int with 8 zeros
  	pread(image, &tempDir, sizeof(DirEntry), N);
-	
-
-
-
- }
-//readFile(int image, char *fileName, char *fileMode)
-
-
- void createEmptyDirEntry(int image, unsigned int offSet){
-	DirEntry temp;
-	
-	int i;
-	
-	for( i = 0; i < 11; i++){
-		temp.DIR_name[i] = 0;
-		//printf("%u%s", temp.DIR_name, " ");
-	}
-	
-	temp.DIR_Attributes = 0;
-	temp.DIR_NTRes = 0;
-	temp.DIR_CrtTimeTenth = 0;
-	temp.DIR_CrtTime = 0;
-	temp.DIR_CrtDate = 0;
-	temp.DIR_LstAccDate = 0;
-	temp.DIR_FstClusHI = 0;
-	temp.DIR_WrtTime = 0;
-	temp.DIR_WrtDate = 0;
-	temp.DIR_FstClusLO = 0;
-	temp.DIR_FileSize = 0;
-	
-	pwrite(image, &temp, 32, offSet);
 }
 
-void cp(int image, char* filename, char* to){
-	printf("cp %s %s", filename, to);
-}
